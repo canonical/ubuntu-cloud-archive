@@ -1,0 +1,82 @@
+name: Backport-o-Matic
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: OpenStack release to backport
+        required: true
+        type: string
+      series:
+        description: Ubuntu series to backport to
+        required: true
+        type: string
+      blacklist:
+        description: List of packages to exclude from backporting
+        required: false
+        type: string
+
+jobs:
+  packages-to-backport:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.outdated-packages.outputs.packages }}
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cloud-archive-utils
+          sudo snap install jq
+      - name: Checkout Cloud Archive Patches
+        run: |
+          git clone https://git.launchpad.net/~ubuntu-cloud-archive/+git/ca-patches
+      - name: List outdated packages
+        id: outdated-packages
+        run: |
+          packages=()
+          for package in cloud-archive-outdated-packages -P "${{ inputs.release }}";
+          do
+            for blacklist in "${{ inputs.blacklist }}";
+            do
+              if [[ $package != $blacklist ]];
+              then
+                packages+=($package)
+              fi
+            done
+          done
+          packages=$(echo "${packages[@]}" | jq --raw-input --compact-output '. | split(" ")')
+          echo "packages=${packages}" >> $GITHUB_OUTPUT
+  build-and-upload:
+    runs-on: ubuntu-latest
+    needs: packages-to-backport
+    strategy:
+      matrix:
+        package: ${{fromJson(needs.packages-to-backport.outputs.packages)}}
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cloud-archive-utils debhelper sbuild schroot ubuntu-dev-tools dput
+          sudo usermod -a -G sbuild $USER
+      - name: make sbuild
+        run: |
+          mk-sbuild "${{ inputs.series}}"
+      - name: Checkout Cloud Archive Patches
+        run: |
+          git clone https://git.launchpad.net/~ubuntu-cloud-archive/+git/ca-patches
+      - name: Backport package
+        run: |
+          pkg=${{ matrix.package }}
+          release=${{ inputs.release }}
+          export CA_PATCHES=$(pwd)/ca-patches
+          cloud-archive-backport --proposed --release "$release" --outdir . "$pkg" || {
+            echo "Autobackport failed, patch may need a refresh"
+          }
+          DEB_BUILD_OPTIONS=nostrip sbuild-$release --no-run-lintian -n -A ${pkg}*/${pkg}_*.dsc
+          # TODO: Configure signing key
+          debsign -kD8761071DE48C342108B1AC000FA37C39935ACDC ${pkg}*/${pkg}_*_source.changes
+      - name: Upload package
+        run: |
+          pkg=${{ matrix.package }}
+          release=${{ inputs.release }}
+          dput -f "ca:$release" ${pkg}*/${pkg}_*_source.changes

@@ -1,0 +1,23 @@
+name: Backport-o-Matic Epoxy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ubuntu-cloud-archive/backports/*.yaml'
+
+
+jobs:
+  lint-backports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Install dependencies
+        run: |
+          sudo snap install astral-uv
+      - name: Checkout Cloud Archive Patches
+        run: |
+          uv run ubuntu-cloud-archive schema validate

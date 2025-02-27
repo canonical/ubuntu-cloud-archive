@@ -1,0 +1,33 @@
+[project]
+name = "ubuntu-cloud-archive"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Guillaume Boutry", email = "guillaume.boutry@canonical.com" },
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.8",
+ "pydantic>=2.10.6",
+ "pyyaml>=6.0.2",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.9.8"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["ubuntu_cloud_archive"]
+
+[tool.setuptools.package-data]
+mypkg = ["*.yaml"]
+
+[project.scripts]
+ubuntu-cloud-archive = "ubuntu_cloud_archive.__main__:main"
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
